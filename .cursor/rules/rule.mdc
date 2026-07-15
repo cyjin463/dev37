@@ -1,0 +1,23 @@
+---
+description: Always check this rule first; only modify files when the user prefixes with cmd:
+alwaysApply: true
+---
+
+# Mandatory order <!-- 모든 작업 전 rule.mdc 우선 확인 -->
+
+1. **Always read this rule (`rule.mdc`) first** before any tool use, file change, or workflow step.
+2. Only then decide what to do based on the sections below.
+3. If other workflows exist (e.g. `.cursor/workflow/agent.md`), apply them **only after** this rule is satisfied.
+
+# Code change gate (`cmd:`) <!-- cmd: 접두사일 때만 파일 수정 허용 -->
+
+## When to modify files <!-- 파일 수정이 허용되는 경우 -->
+
+- Only create, edit, or delete **any** project files (including `.cursor/`) when the user message starts with `cmd:` (e.g. `cmd: add login page`).
+- Treat everything after `cmd:` as the work to execute.
+
+## When NOT to modify files <!-- 파일 수정이 금지되는 경우 -->
+
+- If the message does **not** start with `cmd:`, do not create, edit, or delete any files.
+- No exceptions — `.cursor/rules`, `.cursor/workflow`, source code, config, all included.
+- In that case: answer in chat only (questions, plans, examples, design discussion).
