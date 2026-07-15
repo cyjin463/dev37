@@ -1,5 +1,38 @@
 # Agent workflow <!-- 에이전트 작업 워크플로우 -->
 
+## Command chaining (`|`) <!-- 명령어 연결자 -->
+
+When the user joins agent commands with `|`, run them **left to right, in order**.
+
+- Separator: `|` (optional spaces around it, e.g. `push | switch-dev` or `push|switch-dev`)
+- Each segment is a normal agent command (`push`, `switch-<branch>`, `commit-auto`, `merge-<branch>`, etc.)
+- Finish one command fully before starting the next.
+- If **any** command fails, stops, or needs user decision (build gate fail, merge conflict, missing branch, etc.), **abort the rest of the chain** and report what succeeded and what was skipped.
+- Do not reorder commands. Do not skip steps in the chain.
+
+### Example <!-- 예시 -->
+
+User input:
+
+```text
+push | switch-dev
+```
+
+Means:
+
+1. `push` — push the current branch
+2. `switch-dev` — then switch to `dev`
+
+Another example:
+
+```text
+commit-auto | push | switch-main
+```
+
+Means: commit (auto message) → push → switch to `main`.
+
+---
+
 ## Branch ↔ Jira ticket <!-- 브랜치명으로 Jira 티켓 연동 -->
 
 Before starting work or committing, always check the **current branch name** first.
@@ -20,7 +53,7 @@ Every commit message **must** have:
 - Write the **entire** commit message (subject and body) in **Korean**.
 - Ticket prefix stays as-is: `[XXX-123]`.
 - For `commit-auto`, the agent always drafts subject/body in Korean.
-- For `commit-<work summary>`, if the user text after `commit-` is not Korean, translate it into a natural Korean subject; body bullets are always Korean from the diff.
+- For `commit-<work summary>`, if the user text after `commit-` is not Korean, translate it into natural Korean. Details after `commit-` are optional — see that command section.
 
 #### Subject <!-- 제목 줄 -->
 
@@ -94,17 +127,30 @@ npm run build
 
 When the user requests `commit-<work summary>`, run the steps below **in order**.
 
-1. Inspect changes with `git status` / `git diff` (needed for the body bullets)
+The text after `commit-` is **optional in detail**:
+
+| User provides after `commit-` | How to use it |
+|-------------------------------|---------------|
+| Subject only (short summary) | Use it as the subject (Korean / translate if needed). Write the **body from the diff**. |
+| Subject + details (bullets or extra lines) | Use the subject for the subject line. Prefer the user’s details for the body; **fill gaps from the diff** so the body stays complete and accurate. |
+| Details only without a clear subject | Infer a short Korean subject from the text + diff; put usable details into body bullets and complete from the diff. |
+
+Body bullets are **always required** in the final commit message, even when the user gave no details.
+
+### Steps <!-- 실행 순서 -->
+
+1. Inspect changes with `git status` / `git diff` (needed for body bullets / gap-filling)
 2. Try to extract the Jira ticket key (`XXX-123`) from the current branch name
-3. Build the commit message
-   - **Subject**: `[XXX-123] <한국어 작업 요약>` if ticket found, otherwise `<한국어 작업 요약>` (from the user’s text after `commit-`, translated to Korean if needed)
-   - **Body**: Korean bullet list of concrete changes from the diff (required)
-4. Run the **Pre-commit build gate** (`npm run build`). If it fails or has real build warnings (see Ignore list), **stop and report** — do not continue.
-5. Stage all changes
+3. Parse the user text after `commit-` (subject-only vs subject+details)
+4. Build the commit message
+   - **Subject**: `[XXX-123] <한국어 작업 요약>` if ticket found, otherwise `<한국어 작업 요약>`
+   - **Body**: Korean `- ` bullets — from user details when present, otherwise / additionally from the diff (required)
+5. Run the **Pre-commit build gate** (`npm run build`). If it fails or has real build warnings (see Ignore list), **stop and report** — do not continue.
+6. Stage all changes
    ```bash
    git add .
    ```
-6. Commit with subject + body (HEREDOC)
+7. Commit with subject + body (HEREDOC)
    ```bash
    git commit -m "$(cat <<'EOF'
    <subject>
@@ -118,13 +164,13 @@ When the user requests `commit-<work summary>`, run the steps below **in order**
 
 ### Examples <!-- 예시 -->
 
-User input:
+**Subject only** — user input:
 
 ```text
 commit-로그인 폼 추가
 ```
 
-If the branch is `feature/AUTH-12-login` and the build passes cleanly:
+Agent writes body from diff:
 
 ```bash
 npm run build
@@ -139,10 +185,34 @@ EOF
 )"
 ```
 
+**Subject + details** — user input:
+
+```text
+commit-로그인 폼 추가
+- 폼 UI
+- 제출 핸들러
+```
+
+Agent uses user details, may add missing bullets from diff:
+
+```bash
+npm run build
+git add .
+git commit -m "$(cat <<'EOF'
+[AUTH-12] 로그인 폼 추가
+
+- 폼 UI
+- 제출 핸들러
+- (diff에서 확인된 추가 변경이 있으면 보완)
+
+EOF
+)"
+```
+
 ### Notes <!-- 주의사항 -->
 
 - `commit-` performs a **commit only**. Push only when the user asks separately (`push`).
-- Never commit with subject-only; body bullets are mandatory.
+- Never commit with subject-only in git; body bullets are mandatory even if the user omitted details.
 - Subject and body must be in **Korean**.
 - If there is nothing to commit, do not commit; report the status instead.
 - If files that look like secrets (e.g. `.env`) are included, warn before committing.
